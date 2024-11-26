@@ -15,16 +15,23 @@ end
 % General
 params = struct;
 
+params.reproducible = true; % uses fixed random seed
 
-%params.datafolder = '\\vs03\VS03-CSF-1\Heimel\Heimel_HMM\Data_collection\Montijn_elife_2021';
-params.datafolder = 'C:\Users\heimel.HERSENINSTITUUT\OneDrive\Desktop\Brainstates';
-params.binsize = 0.1; % s
+params.datafolder = 'C:\Users\heimel.HERSENINSTITUUT\OneDrive\Projects\Heimel\Brainstates';
+params.binsize = 0.2; % s
 
 params.max_time_since_stim_on = 3; 
 params.max_time_since_stim_off = 3; 
 
-params.smooth = true;
-params.smooth_window = 4; % samples
+params.smooth = false;
+params.smooth_window = 2; % samples
+
+params.response_offset = 0.050; % s, delay of visual response
+
+params.only_distinguish_orientations = true; % make two opposing directions the same stimulus type
+
+params.cluster_tsne = false;
+params.cluster_method = 'kmeans';
 
 % Load processparams_local. Keep at the end
 if exist('processparams_local.m','file')
