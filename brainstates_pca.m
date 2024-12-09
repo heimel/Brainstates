@@ -1,149 +1,125 @@
+%brainstates_pca
+%
+% Deprecated. Use brainstates.mlx
+%
+% 2024, Alexander Heimel
 
-params = bs_default_params();
+%% To do
+%  Apply GPFA (Yu et al. J Neurophys 2009) (run alexander_test with data split into trials)
+%  Apply augmentation vs smoothing or binning
+%  Compute log-likelihood of observed data over different seeds 
+%  Make lecture notes
+%  Check out other recordings
+%  Variational auto-encoders
+%  Test CEBRA datasets
+%  CEBRA (latent embeddings of neural space)
+%
+%  Good reference for HMM fit to neural data: Bagi et al. Curr Biol 2022
+
+%  Python implementations:
+%  Extensive implementation of HMM: https://github.com/lindermanlab/ssm
+%  Gausssian emission HMM: https://hmmlearn.readthedocs.io/en/latest/api.html#hmmlearn.hmm.GaussianHMM
+%
+%  Matlab:
+%  hmmtrain
+%  for gaussian: 
+%  https://www.cs.ubc.ca/~murphyk/Software/HMM/hmm.html
+%   -> moved to https://github.com/probml/pmtk3/tree/master/toolbox/LatentVariableModels/hmm
+%
+%  https://nl.mathworks.com/matlabcentral/fileexchange/55866-hidden-markov-model-toolbox-hmm
+%  https://nl.mathworks.com/matlabcentral/fileexchange/20712-em-for-hmm-multivariate-gaussian-processes
+
 
 
 %% Load data
+params = bs_default_params();
+addpath(fullfile(fileparts(mfilename("fullpath")),'Mutualinfo'));
 
-% Required:
-% trial_stim_on = vector with stimulus onset times for all trials
-% trial_stim_off = vector with stimulus offset times for all trials
-% trial_stim_type = vector with stimulus types for all trials
-% n_trials = length(trial_stim_on);
-% spike_times = cell list with spike times for all clusters
-% n_clusters = length(spike_times);
+ params.dataset = 'Topo6_20220301_AP';
+ params.block = 2;
+% Best fit no hinst (with hints), two states 22% (45%); all states 19% (34%)
 
-params.dataset = 'Topo6_20220301_AP';
-switch params.dataset
-    case 'Exp2019-12-16_MP3_S2L5_AP'
-        load(fullfile(params.datafolder,[params.dataset '.mat']))
+%params.dataset = 'Topo6_20220301_AP';
+%params.block = 4;
+% Best fit no hints (with hints), two states 12% (41%); all states 15% (26%)
 
-        % select V1 clusters
-        sAP.sCluster = sAP.sCluster(contains(string({sAP.sCluster.Area}),"Primary visual area"));
-        n_clusters = length(sAP.sCluster);
+% params.dataset = 'Exp2019-12-16_MP3_S2L5_AP';
+% params.block = 3;
+% Best fit no hints (with hints), two states XX% (23%); all states XX% (XX%)
 
-        spike_times = cell(n_clusters,1);
-        for c = 1:n_clusters
-            spike_times{c} = sAP.sCluster(c).SpikeTimes;
-        end
+[spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval] = bs_load_data(params);
 
-        block = 3;
-        trial_stim_on = sAP.cellStim{block}.structEP.vecStimOnTime;
-        trial_stim_off = sAP.cellStim{block}.structEP.vecStimOffTime;
-        trial_stim_type = sAP.cellStim{block}.structEP.vecTrialStimTypes;
-        n_trials = length(trial_stim_on);
 
-        stimuli = unique(trial_stim_type);
-        n_stimuli = length(stimuli);
+params.smooth = true;
+params.smooth_function = 'smoothen';
+params.smooth_window = 0.1;
+params.binsize = 0.01;
 
-        recording_interval(1) = trial_stim_on(1) - 1;
-        recording_interval(2) = trial_stim_off(end) + 1;
-
-    case 'Topo6_20220301_AP'
-        load(fullfile(params.datafolder,[params.dataset '.mat']))
-        block = 4;
-
-        % select V1 clusters
-        sAP.sCluster = sAP.sCluster(contains(string({sAP.sCluster.Area}),"Primary visual area"));
-
-        % select responsive clusters
-        sAP.sCluster = sAP.sCluster(arrayfun(@(x) x.ZetaP(2),sAP.sCluster)<0.05);
-
-        n_clusters = length(sAP.sCluster);
-        spike_times = cell(n_clusters,1);
-        for c = 1:n_clusters
-            spike_times{c} = sAP.sCluster(c).SpikeTimes;
-        end
-
-        trial_stim_on = sAP.cellBlock{block}.vecStimOnTime;
-        trial_stim_off = sAP.cellBlock{block}.vecStimOffTime;
-        trial_stim_type = sAP.cellBlock{block}.vecTrialStimTypes;
-
-        % Changing stim type to orientation
-        if params.only_distinguish_orientations
-            trial_stim_type = mod(trial_stim_type-1,12)+1;
-        end
-
-        stimuli = unique(trial_stim_type);
-        n_stimuli = length(stimuli);
-        n_trials = length(trial_stim_on);
-
-        recording_interval(1) = trial_stim_on(1) - 1;
-        recording_interval(2) = trial_stim_off(end) + 1;
-
-        recording_interval(2) = 3300;
-end
-
-disp(['Loaded ' num2str(n_clusters) ' clusters and ' num2str(n_trials) ' trials for ' num2str(n_stimuli) ' different stimuli.'])
-
-[bin_times,spike_counts,stim_types,times_since_stim_on,time_since_stim_off] = ...
-    bs_bin_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval,params);
+[bin_times,bin_counts,bin_labels,bin_times_rel] = ...
+    bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval,params);
 n_bins = length(bin_times);
+n_clusters = length(spike_times);
 
-%%
-ind_bin_subset = round(linspace(1,n_bins,min([5000 n_bins]))); % total runs show change over time in t-sne plot
+ind_bin_subset = round(linspace(1,n_bins,min([1000 n_bins]))); % total runs show change over time in t-sne plot
 
+return
 
-if 0
-    %% Get correlated pairs
-    no_correlation = true;
-    c1 = 0;
+%% Get correlated pairs
+no_correlation = true; %#ok<UNRCH>
+c1 = 0;
 
-    while c1<n_clusters && no_correlation
-        c1 = c1 + 1;
-        c2 = c1;
-        while c2<n_clusters && no_correlation
-            c2 = c2+1;
-            x = corrcoef(spike_counts(c1,:),spike_counts(c2,:));
-            if x(1,2)>0.5
-                disp(['Good correlation for ' num2str(c1) ' and ' num2str(c2)]);
-                no_correlation = false;
-            end
+while c1<n_clusters && no_correlation
+    c1 = c1 + 1;
+    c2 = c1;
+    while c2<n_clusters && no_correlation
+        c2 = c2+1;
+        x = corrcoef(bin_counts(c1,ind_bin_subset),bin_counts(c2,ind_bin_subset));
+        if x(1,2)>0.5
+            disp(['Good correlation for ' num2str(c1) ' and ' num2str(c2)]);
+            no_correlation = false;
         end
     end
-
-
-    %% PCA Example with two neurons
-    %c1 = 22; c2 = 27;
-    %c1 = 7; c2 = 45;
-    %c1 = 38; c2 = 39;
-    %c1 = 44; c2 = 45;
-    figure
-    scatter(spike_counts(c1,ind_bin_subset) + 0.5*(rand(1,length(ind_bin_subset))-0.5),...
-        spike_counts(c2,ind_bin_subset) + 0.5*(rand(1,length(ind_bin_subset))-0.5),'filled')
-    xlabel('Spike count neuron 1 (jittered)');
-    ylabel('Spike count neuron 2 (jittered)');
-    hold on
-    axis equal
-
-    x = spike_counts([c1 c2],:)';
-    [coeff,score,latent] = pca(x);
-
-    mx = mean(x);
-    plot(mx(1),mx(2),'or','MarkerFaceColor','r')
-    plot(mx(1)+[0 coeff(1,1)],mx(2)+[0 coeff(2,1)],'r-','LineWidth',2)
-    plot(mx(1)+[0 coeff(1,2)],mx(2)+[0 coeff(2,2)],'g-','LineWidth',2 )
-
-
-    x_reconstruct = score*coeff' + repmat(mx,n_bins,1);
-
-    scatter(x_reconstruct(ind_bin_subset,1),x_reconstruct(ind_bin_subset,2),'filled')
-
 end
+
+
+%% PCA Example with two neurons
+figure
+scatter(bin_counts(c1,ind_bin_subset) + 0.5*(rand(1,length(ind_bin_subset))-0.5),...
+    bin_counts(c2,ind_bin_subset) + 0.5*(rand(1,length(ind_bin_subset))-0.5),'filled')
+xlabel('Spike count neuron 1 (jittered)');
+ylabel('Spike count neuron 2 (jittered)');
+hold on
+axis equal
+
+x = bin_counts([c1 c2],:)';
+[coeff,score,latent] = pca(x);
+
+mx = mean(x);
+plot(mx(1),mx(2),'or','MarkerFaceColor','r')
+plot(mx(1)+[0 coeff(1,1)],mx(2)+[0 coeff(2,1)],'r-','LineWidth',2)
+plot(mx(1)+[0 coeff(1,2)],mx(2)+[0 coeff(2,2)],'g-','LineWidth',2 )
+
+
+% x_reconstruct = score*coeff' + repmat(mx,n_bins,1);
+% scatter(x_reconstruct(ind_bin_subset,1),x_reconstruct(ind_bin_subset,2),'filled')
+
 
 %% PCA for all clusters
 disp('Computing PCA')
-[coeff,score,latent] = pca(spike_counts');
-mx = mean(spike_counts');
+[coeff,score,latent] = pca(bin_counts');
+mx = mean(bin_counts'); %#ok<UDIM>
 
 
 figure
 subplot(2,2,1)
-bar(latent)
+bar(latent*100)
 ylabel('Explained (%) ')
 xlabel('Component')
+xlim([0.5 10.5])
+set(gca,'xtick',1:2:10)
 
 subplot(2,2,2)
-imagesc(spike_counts)
+imagesc(bin_counts)
 ylabel('Neuron')
 xlabel('Sample')
 title('Origina data')
@@ -153,7 +129,7 @@ hold on
 plot(bin_times,score(:,1))
 plot(bin_times,score(:,2))
 plot(bin_times,score(:,3))
-plot(bin_times,times_since_stim_on)
+plot(bin_times,bin_times_rel)
 xlabel('Time (s)')
 ylabel('Score')
 
@@ -171,26 +147,68 @@ title('First 3 PCs')
 
 %% PC1 vs PC2 with color time since stim on
 figure;
-scatter(score(ind_bin_subset,1),score(ind_bin_subset,2),30,times_since_stim_on(ind_bin_subset),'filled')
+scatter(score(ind_bin_subset,1),score(ind_bin_subset,2),30,bin_times_rel(ind_bin_subset),'filled')
 axis square
 colorbar
 xlabel('PC1')
 ylabel('PC2')
+
+hold on
+[~,ind] = sort(bin_times_rel);
+x = movingavr(score(ind,1),2000);
+y = movingavr(score(ind,2),2000);
+plot(x,y,'k-','linewidth',2)
+plot(x(1),y(1),'og','MarkerFaceColor','g')
+plot(x(end),y(end),'og','MarkerFaceColor','r')
+
 
 %% PC1 vs PC2 with color stim_type
 figure;
-scatter(score(ind_bin_subset,1),score(ind_bin_subset,2),30,stim_types(ind_bin_subset),'filled')
-colormap(parula(max(stim_types(ind_bin_subset))+2))
+scatter(score(ind_bin_subset,1),score(ind_bin_subset,2),30,bin_labels(ind_bin_subset),'filled')
+colormap(parula(max(bin_labels(ind_bin_subset))+2))
 
 axis square
 colorbar
 xlabel('PC1')
 ylabel('PC2')
+
+%% Factor analysis
+[~,~,~,~,fa_score] = factoran(bin_counts',10);
+figure;
+subplot(1,2,1)
+scatter(fa_score(ind_bin_subset,1),fa_score(ind_bin_subset,2),30,bin_times_rel(ind_bin_subset),'filled')
+axis square
+colorbar
+xlabel('Score 1')
+ylabel('Score 2')
+hold on
+[~,ind] = sort(bin_times_rel);
+x = movingavr(fa_score(ind,1),2000);
+y = movingavr(fa_score(ind,2),2000);
+plot(x,y,'k-','linewidth',2)
+plot(x(1),y(1),'og','MarkerFaceColor','g')
+plot(x(end),y(end),'og','MarkerFaceColor','r')
+
+subplot(1,2,2)
+scatter(fa_score(ind_bin_subset,1),fa_score(ind_bin_subset,2),30,bin_labels(ind_bin_subset),'filled')
+colormap(parula(max(bin_labels(ind_bin_subset))+2))
+axis square
+colorbar
+xlabel('Score 1')
+ylabel('Score 2')
+hold on
+[~,ind] = sort(bin_labels);
+x = movingavr(fa_score(ind,1),2000);
+y = movingavr(fa_score(ind,2),2000);
+plot(x,y,'k-','linewidth',2)
+plot(x(1),y(1),'og','MarkerFaceColor','g')
+plot(x(end),y(end),'og','MarkerFaceColor','r')
+
 
 
 %% t-sne for subset
 disp('Computing t-sne')
-y = tsne(spike_counts(:,ind_bin_subset)');
+y = tsne(bin_counts(:,ind_bin_subset)');
 
 % Show t-sne with time as color
 figure
@@ -205,8 +223,7 @@ title('Absolute time')
 
 % Show t-sne with time since stim onset as color
 h = subplot(2,2,2);
-scatter(y(:,1),y(:,2),30,times_since_stim_on(ind_bin_subset),'filled')
-%scatter(y(:,1),y(:,2),30,time_since_stim_off(ind_bin_subset),'filled')
+scatter(y(:,1),y(:,2),30,bin_times_rel(ind_bin_subset),'filled')
 axis square
 xlabel('t-sne 1')
 ylabel('t-sne 2')
@@ -217,96 +234,158 @@ title('Time since stim on')
 % Show t-sne with stim type as color
 h = subplot(2,2,3);
 
-scatter(y(:,1),y(:,2),30,stim_types(ind_bin_subset)+2,'filled')
-%scatter(y(:,1),y(:,2),30,time_since_stim_off(ind_bin_subset),'filled')
+scatter(y(:,1),y(:,2),30,bin_labels(ind_bin_subset)+2,'filled')
 axis square
 xlabel('t-sne 1')
 ylabel('t-sne 2')
-colormap(h,parula(max(stim_types(ind_bin_subset))+2))
+colormap(h,parula(max(bin_labels(ind_bin_subset))+2))
 colorbar
 title('Stim type')
 
-
-%% Optimal HMM fit to two states
-n_emissions = 20;
+%% Overfitting HMM (learning all spike counts) (100%)
 n_states = 2;
 params = bs_default_params();
-params.fit_hmm_prompt = 'states_on_off';
-params.binsize = 0.01;
-[bin_times,spike_counts,stim_types,times_since_stim_on,~] = bs_bin_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type,recording_interval,params);
-[states,~,trans,emis] = bs_fit_hmm(spike_counts,n_states,n_emissions,stim_types,n_stimuli,params);
-%confusion = bs_compute_confusion(states,n_states,stim_types,stimuli,n_stimuli);
-bs_results_hmm(trans,emis,bin_times,stim_types,states,times_since_stim_on);
-correct = (sum(stim_types==-1 & states==1) + sum(stim_types~=1 & states~=1))/length(stim_types);
-disp(['Correctly classified states: ' num2str(round(correct*100)) ' % ' ...
-    '(random level: ' num2str( round((1-sum(stim_types==-1)/length(stim_types))*100)) ' %)'])
+params.fit_hmm_prompt = 'emission_freqs';
+params.binsize = 0.1;
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,ones(size(trial_stim_type)), recording_interval,params);
+n_emissions = length(bin_times);
+[bin_states,~,trans,emis] = bs_fit_hmm(bin_counts,n_states,n_emissions,bin_labels,params);
+bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel);
+
+%% HMM fit to two states (11%) 
+n_emissions = 10;
+n_states = 2;
+params = bs_default_params();
+params.fit_hmm_prompt = 'emission_freqs';
+params.hmm_algorithm = 'Viterbi';
+params.smooth = false;
+params.binsize = 0.1;
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,ones(size(trial_stim_type)),recording_interval,params);
+[bin_states,~,trans,emis] = bs_fit_hmm(bin_counts,n_states,n_emissions,bin_labels,params);
+bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel);
 
 
-%% HMM fit to PCA
 n_emissions = 100;
 n_states = 2;
 params = bs_default_params();
-params.fit_hmm_prompt = 'states_on_off';
+params.fit_hmm_prompt = 'emission_freqs';
+params.hmm_algorithm = 'Viterbi';
+params.smooth = true;
+params.smooth_function = 'smoothen';
+params.smooth_window = 0.1;
 params.binsize = 0.01;
-[bin_times,spike_counts,stim_types,times_since_stim_on,~] = bs_bin_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval,params);
-[coeff,score,latent] = pca(spike_counts');
-score = score(:,1:10); % take first 10 PCs
-[states,~,trans,emis] = bs_fit_hmm(score',n_states,n_emissions,stim_types,n_stimuli,params);
-bs_results_hmm(trans,emis,bin_times,stim_types,states,times_since_stim_on);
-correct = (sum(stim_types==-1 & states==1) + sum(stim_types~=1 & states~=1))/length(stim_types);
-disp(['Correctly classified states: ' num2str(round(correct*100)) ' % ' ...
-    '(random level: ' num2str( round((1-sum(stim_types==-1)/length(stim_types))*100)) ' %)'])
+params.square_root_transformation = true;
+
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,ones(size(trial_stim_type)),recording_interval,params);
+[coeff,score,latent] = pca(bin_counts');
+score = score(:,1:30);
+[bin_states,~,trans,emis] = bs_fit_hmm(score',n_states,n_emissions,bin_labels,params);
+bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel);
 
 
-
-%% Overfitting HMM (learning all spike counts)
+%% HMM fit to two states on 10 FA components (37%)
+n_emissions = 100;
 n_states = 2;
 params = bs_default_params();
-params.fit_hmm_prompt = 'states_on_off';
-params.binsize = 0.1;
-[bin_times,spike_counts,stim_types,times_since_stim_on,~] = bs_bin_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval,params);
-n_emissions = length(bin_times);
-[states,~,trans,emis] = bs_fit_hmm(spike_counts,n_states,n_emissions,stim_types,n_stimuli,params);
-confusion = bs_compute_confusion(states,n_states,stim_types,stimuli,n_stimuli);
-bs_results_hmm(trans,emis,bin_times,stim_types,states,times_since_stim_on,confusion);
-correct = (sum(stim_types==-1 & states==1) + sum(stim_types~=1 & states~=1))/length(stim_types);
-disp(['Correctly classified states: ' num2str(round(correct*100)) ' % ' ...
-    '(random level: ' num2str( round((1-sum(stim_types==-1)/length(stim_types))*100)) ' %)'])
+params.fit_hmm_prompt = 'emission_freqs';
+params.hmm_algorithm = 'Viterbi';
+params.smooth = true;
+params.smooth_function = 'smoothen';
+params.smooth_window = 0.1;
+params.binsize = 0.02;
+params.square_root_transformation = true;
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,ones(size(trial_stim_type)),recording_interval,params);
 
-%% Fit HMM with 1 ms bins
-n_emissions = n_clusters+1; % (in the limit of binsize->0, a single neuron spiking becomes one emission label)
+%[bin_states,~,trans,emis] = bs_fit_hmm(fa_score',n_states,n_emissions,bin_labels,params);
+
+[~,~,~,~,fa_score] = factoran(bin_counts',10);
+[bin_states,~,trans,emis] = bs_fit_hmm(fa_score',n_states,n_emissions,bin_labels,params);
+
+bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel);
+
+%% GM-HMM fit to two states (41%)
+n_emissions = 10;
 n_states = 2;
 params = bs_default_params();
-params.fit_hmm_prompt = 'states_on_off';
-params.binsize = 0.001;
-[bin_times,spike_counts,stim_types,times_since_stim_on,~] = bs_bin_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval,params);
-[states,p_states,trans,emis] = bs_fit_hmm(spike_counts,n_states,n_emissions,stim_types,n_stimuli,params);
-bs_results_hmm(trans,emis,bin_times,stim_types,states,times_since_stim_on);
-correct = (sum(stim_types==-1 & states==1) + sum(stim_types~=1 & states~=1))/length(stim_types);
-disp(['Correctly classified states: ' num2str(round(correct*100)) ' % ' ...
-    '(random level: ' num2str( round((1-sum(stim_types==-1)/length(stim_types))*100)) ' %)'])
+params.fit_hmm_prompt = 'mix_gauss_hints';
+params.smooth = true;
+params.smooth_function = 'smoothen';
+params.smooth_window = 0.05;
+params.binsize = 0.01;
+params.hmm_version = 'Probml_mixgausstied';
+params.square_root_transformation = true;
+params.n_mixgauss = 6; 
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,ones(size(trial_stim_type)),recording_interval,params);
+[~,~,~,~,fa_score] = factoran(bin_counts',10);
+[bin_states,~,trans,emis] = bs_fit_hmm(fa_score',n_states,n_emissions,bin_labels,params);
+bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel);
 
 
-%% Optimal HMM fit to n_stimuli + 1 states
-n_emissions = 200;
-n_states = n_stimuli + 1;
+%% HMM fit to two states, no hints (11%)
+n_emissions = 10;
+n_states = 2;
 params = bs_default_params();
-params.fit_hmm_prompt = 'states_for_all_stimuli';
+params.fit_hmm_prompt = 'no_hints';
+params.hmm_algorithm = 'BaumWelch';
+%params.reproducible = false;
 params.binsize = 0.1;
-[bin_times,spike_counts,stim_types,times_since_stim_on,~] = bs_bin_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval,params);
-
-[states,~,trans,emis] = bs_fit_hmm(spike_counts,n_states,n_emissions,stim_types,n_stimuli,params);
-bs_results_hmm(trans,emis,bin_times,stim_types,states,times_since_stim_on);
-
-correct = (sum(stim_types==-1 & states==n_states) + sum(stim_types~=1 & states~=n_states))/length(stim_types);
-disp(['Correctly classified as no stimulus: ' num2str(round(correct*100)) ' % ' ...
-    '(random level: ' num2str( round((1-sum(stim_types==-1)/length(stim_types))*100)) ' %)'])
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,ones(size(trial_stim_type)),recording_interval,params);
+[bin_states,~,trans,emis] = bs_fit_hmm(bin_counts,n_states,n_emissions,bin_labels,params);
+bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel);
 
 
+%% GM-HMM fit to two states, no hints (12%)
+n_emissions = 10;
+n_states = 2;
+params = bs_default_params();
+params.fit_hmm_prompt = 'no_mix_gauss_hints';
+params.smooth = true;
+params.smooth_function = 'smoothen';
+params.smooth_window = 0.1;
+params.binsize = 0.01;
+params.hmm_version = 'Probml_mixgausstied';
+params.square_root_transformation = true;
+params.n_mixgauss = 12; 
+params.reproducible = true;
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,ones(size(trial_stim_type)),recording_interval,params);
+[~,~,~,~,fa_score] = factoran(bin_counts',10);
+[bin_states,~,trans,emis] = bs_fit_hmm(fa_score',n_states,n_emissions,bin_labels,params);
+bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel);
 
 
-%%
-%- variational auto-encoders
-%- CEBRA (latent embeddings of neural space)
+
+
+%% GM-HMM fit to all labels (26%)
+n_emissions = 10;
+params = bs_default_params();
+params.fit_hmm_prompt = 'mix_gauss_hints';
+params.smooth = true;
+params.smooth_function = 'smoothen';
+params.smooth_window = 0.05;
+params.binsize = 0.01;
+params.hmm_version = 'Probml_mixgausstied';
+params.square_root_transformation = true;
+params.n_mixgauss = 6; 
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval,params);
+labels = unique(bin_labels);
+n_states = length(labels);
+[~,~,~,~,fa_score] = factoran(bin_counts',10);
+[bin_states,~,trans,emis] = bs_fit_hmm(fa_score',n_states,n_emissions,bin_labels,params);
+bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel);
+
+
+
+
+%% HMM fit to all labels, no hints (15%) 
+n_emissions = 100; % 200
+params = bs_default_params();
+params.fit_hmm_prompt = 'no_hints';
+params.hmm_algorithm = 'BaumWelch';
+params.binsize = 0.1;
+[bin_times,bin_counts,bin_labels,bin_times_rel,~] = bs_bin_labeled_data(spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_interval,params);
+labels = unique(bin_labels);
+n_states = length(labels);
+[states,~,trans,emis] = bs_fit_hmm(bin_counts,n_states,n_emissions,bin_labels,params);
+bs_results_hmm(trans,emis,bin_times,bin_labels,states,bin_times_rel);
 
 
