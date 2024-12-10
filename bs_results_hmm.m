@@ -1,15 +1,11 @@
 function bs_results_hmm(trans,emis,bin_times,bin_labels,bin_states,bin_times_rel)
 
-n_bins = length(bin_labels);
 n_states = size(trans,1);
 n_emissions = size(emis,2);
 labels = unique(bin_labels);
 n_labels = length(labels);
 
-[confusion_in_state,confusion_in_label,confusion_matrix] = bs_compute_confusion(bin_states,n_states,bin_labels,labels);
-disp(['Confusion in state = ' num2str(confusion_in_state,2) '. Lower is better.'])
-disp(['Confusion in label = ' num2str(confusion_in_label,2) '. Lower is better.'])
-
+confusion_matrix = bs_compute_confusion(bin_states,n_states,bin_labels,labels);
 
 ent = entropy(bin_labels);
 mi = mutualinfo(bin_labels,bin_states);
@@ -19,7 +15,6 @@ disp(['Relative mutual information = ' num2str(round(mi/ent*100)) , '%'])
 
 
 % HMM figures
-
 figure
 
 % Transition matrix
@@ -28,7 +23,6 @@ imagesc('ydata',1:n_states,'xdata',1:n_states,'cdata',trans)
 set(gca,'xtick',1:n_states)
 set(gca,'ytick',1:n_states)
 axis image
-%title('Transition matrix')
 xlabel('To')
 ylabel('From')
 clim([0 1]);
@@ -39,14 +33,13 @@ subplot(4,2,3)
 if ~isstruct(emis)
     imagesc('ydata',1:n_states,'xdata',1:n_emissions,'cdata',emis)
 else
-    disp('STILL TO IMPLEMENT emis.mu')
+    imagesc('ydata',1:n_states,'xdata',1:n_emissions,'cdata',emis.M)
 end
     clim([0 1])
 ylabel('State')
 set(gca,'xtick',[])
 set(gca,'ytick',1:n_states)
 xlabel('Emission')
-%title('Emission matrix')
 axis tight
 
 % Example period

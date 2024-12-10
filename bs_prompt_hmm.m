@@ -24,7 +24,7 @@ switch params.fit_hmm_prompt
         end
 
         n_dim = size(bin_counts,1);
-        n_mix = params.n_mixgauss;
+        n_mix = n_emissions;
         mu = zeros(n_dim,n_states*n_mix);
         sigma = zeros(n_dim,n_dim,n_states*n_mix);
         mix_weights = zeros(n_states,n_states*n_mix);
@@ -45,7 +45,7 @@ switch params.fit_hmm_prompt
             disp('Cannot hint emission matrix')
         end
 
-        n_mix = params.n_mixgauss;
+        n_mix = n_emissions;
         mix_weights = zeros(n_states,n_mix);
 
         data = bin_counts';
@@ -60,10 +60,10 @@ switch params.fit_hmm_prompt
         emis_guess.M = rand(n_states,n_mix);
         emis_guess.M = emis_guess.M ./sum(emis_guess.M ); % just makes everything 1/n_states though
 
-         emis_guess.M = zeros(n_states,n_mix);
-         emis_guess.M(1,1:n_mix/2) = ones(1,n_mix/2);
-         emis_guess.M(2,n_mix/2+1:end) = ones(1,n_mix/2);
-        
+        emis_guess.M = zeros(n_states,n_mix);
+        emis_guess.M(1,1:n_mix/2) = ones(1,n_mix/2);
+        emis_guess.M(2,n_mix/2+1:end) = ones(1,n_mix/2);
+
 end
 
 

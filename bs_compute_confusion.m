@@ -1,4 +1,4 @@
-function [confusion_in_state,confusion_in_label, confusion_matrix] = bs_compute_confusion(states,n_states,stim_types,stimuli)
+function [confusion_matrix,confusion_in_state,confusion_in_label] = bs_compute_confusion(states,n_states,stim_types,stimuli)
 
 % No confusion is if each label completely gets mapped to one state
 %
