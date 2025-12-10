@@ -6,6 +6,7 @@ function [spike_times,trial_stim_on,trial_stim_off,trial_stim_type, recording_in
 % trial_stim_on = vector with stimulus onset times for all trials
 % trial_stim_off = vector with stimulus offset times for all trials
 % trial_stim_type = vector with stimulus types for all trials
+% recording_interval contains 1x2 vector with start and end of stimulus set
 %
 % 2024, Alexander Heimel
 
@@ -34,11 +35,14 @@ switch params.dataset
         recording_interval(1) = trial_stim_on(1) - 1;
         recording_interval(2) = trial_stim_off(end) + 1;
 
+        experiment_type = sAP.cellStim{params.block}.structEP.strFile;
+
+
     case 'Topo6_20220301_AP' % block 4
         load(fullfile(params.datafolder,[params.dataset '.mat']),'sAP')
 
         % select V1 clusters
-        sAP.sCluster = sAP.sCluster(contains(string({sAP.sCluster.Area}),"Primary visual area"));
+       sAP.sCluster = sAP.sCluster(contains(string({sAP.sCluster.Area}),"Primary visual area"));
 
         % select responsive clusters
         sAP.sCluster = sAP.sCluster(arrayfun(@(x) x.ZetaP(2),sAP.sCluster)<0.05);
@@ -65,6 +69,8 @@ switch params.dataset
         recording_interval(1) = trial_stim_on(1) - 1;
         recording_interval(2) = trial_stim_off(end) + 1;
 
+        experiment_type = sAP.cellBlock{params.block}.strExpType;
+
 end
 disp(['Loaded ' num2str(n_clusters) ' clusters and ' num2str(n_trials) ' trials for ' num2str(n_stimuli) ' different stimuli.'])
-disp(['Stimulus type' sAP.cellBlock{params.block}.strExpType]);
+disp(['Stimulus type' experiment_type]);

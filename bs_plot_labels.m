@@ -1,6 +1,8 @@
 function bs_plot_labels(bin_times,bin_labels,yl,xl)
 %bs_plot_labels. Adds labels as vertical bars
 %
+%  bs_plot_labels(bin_times,bin_labels,yl=[0 1],[xl])
+%
 % 2024, Alexander Heimel
 
 if nargin<3 || isempty(yl)

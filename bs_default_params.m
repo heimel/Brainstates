@@ -24,7 +24,10 @@ params.datafolder = fullfile(rootpath,'Data');
 
 % Neuropixels dataset with V1 recordings
 params.dataset = 'Topo6_20220301_AP';
-params.block = 2;
+params.block = 2; %
+
+% params.dataset = 'Exp2019-12-16_MP3_S2L5_AP';
+% params.block = 2; %
 
 params.binsize = 0.01; % s
 params.square_root_transformation = true; % See Yu et al. J Neurophysiol 2009
